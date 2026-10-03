@@ -191,4 +191,65 @@ impl VolumeIndex {
         }
         children
     }
+
+    /// Returns top items sorted by size or age
+    pub fn get_top_items(&self, limit: usize) -> Vec<core_model::FileRecord> {
+        let now = chrono::Utc::now().timestamp();
+        let mut sorted_indices: Vec<usize> = (1..self.nodes.len()).collect();
+        // Sort descending by size
+        sorted_indices.sort_unstable_by(|&a, &b| {
+            self.nodes[b].size_bytes.cmp(&self.nodes[a].size_bytes)
+        });
+
+        sorted_indices
+            .into_iter()
+            .take(limit)
+            .map(|idx| {
+                let node = &self.nodes[idx];
+                let path = self.build_full_path(idx);
+                let name = self.get_name(idx).to_string();
+                let is_dir = node.is_dir();
+
+                let age_secs = (now - node.created_secs).max(0);
+                let age_days = age_secs / 86400;
+                let age_years = age_days / 365;
+                let age_months = (age_days % 365) / 30;
+
+                let age_label = if age_years > 0 {
+                    format!("{} ปี {} เดือน", age_years, age_months)
+                } else if age_months > 0 {
+                    format!("{} เดือน", age_months)
+                } else {
+                    format!("{} วัน", age_days.max(1))
+                };
+
+                let created_year = chrono::DateTime::from_timestamp(node.created_secs, 0)
+                    .map(|dt| chrono::Datelike::year(&dt))
+                    .unwrap_or(2024);
+
+                let lower_name = name.to_lowercase();
+                let (label, reason) = if lower_name.ends_with(".iso") || lower_name.ends_with(".zip") || lower_name.ends_with(".rar") || lower_name.ends_with(".7z") {
+                    ("Review".to_string(), "ไฟล์บีบอัดหรือ Installer เก่าขนาดใหญ่".to_string())
+                } else if lower_name.contains("cache") || lower_name.contains("temp") {
+                    ("Safe".to_string(), "แคชหรือไฟล์ชั่วคราว สามารถล้างได้".to_string())
+                } else if is_dir {
+                    ("Review".to_string(), "โฟลเดอร์ขนาดใหญ่ในไดรฟ์".to_string())
+                } else {
+                    ("Keep".to_string(), "ไฟล์ข้อมูลของผู้ใช้".to_string())
+                };
+
+                core_model::FileRecord {
+                    id: idx.to_string(),
+                    name,
+                    path,
+                    size_bytes: node.size_bytes,
+                    created_year,
+                    age_label,
+                    is_dir,
+                    label,
+                    reason,
+                }
+            })
+            .collect()
+    }
 }

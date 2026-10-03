@@ -16,12 +16,14 @@ fn scan_volume(drive_letter: char) -> Result<serde_json::Value, String> {
     let cache = CacheManager::new().ok();
     if let Some(ref c) = cache {
         if let Some(cached_index) = c.load_index(drive_letter) {
+            let top_items = cached_index.get_top_items(50);
             return Ok(serde_json::json!({
                 "volume_letter": cached_index.volume_letter,
                 "total_files": cached_index.total_files_count,
                 "total_dirs": cached_index.total_dirs_count,
                 "total_bytes": cached_index.total_size_bytes,
                 "is_cached": true,
+                "top_items": top_items,
             }));
         }
     }
@@ -33,12 +35,15 @@ fn scan_volume(drive_letter: char) -> Result<serde_json::Value, String> {
         let _ = c.save_index(&index);
     }
 
+    let top_items = index.get_top_items(50);
+
     Ok(serde_json::json!({
         "volume_letter": index.volume_letter,
         "total_files": index.total_files_count,
         "total_dirs": index.total_dirs_count,
         "total_bytes": index.total_size_bytes,
         "is_cached": false,
+        "top_items": top_items,
     }))
 }
 
@@ -103,6 +108,16 @@ fn check_broker_status() -> bool {
     }
 }
 
+#[tauri::command]
+fn find_duplicate_files(paths: Vec<(String, u64)>) -> Vec<dupes::DuplicateGroup> {
+    dupes::find_duplicates(&paths)
+}
+
+#[tauri::command]
+fn scan_app_leftovers() -> Vec<leftovers::LeftoverCandidate> {
+    leftovers::scan_uninstalled_leftovers()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -117,6 +132,8 @@ pub fn run() {
             recycle_file_or_folder,
             purge_standby_memory,
             check_broker_status,
+            find_duplicate_files,
+            scan_app_leftovers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -129,3 +129,16 @@ pub struct LiveTelemetry {
     pub network_in_bytes_sec: u64,
     pub network_out_bytes_sec: u64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct FileRecord {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub size_bytes: u64,
+    pub created_year: i32,
+    pub age_label: String,
+    pub is_dir: bool,
+    pub label: String,
+    pub reason: String,
+}
