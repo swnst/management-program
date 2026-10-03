@@ -1,0 +1,11 @@
+[package]
+name = "dupes"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core-model = { path = "../core-model" }
+serde = { workspace = true }
+blake3 = { workspace = true }
+xxhash-rust = { workspace = true }
+thiserror = { workspace = true }

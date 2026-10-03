@@ -1,0 +1,12 @@
+[package]
+name = "junk-rules"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core-model = { path = "../core-model" }
+platform-win = { path = "../platform-win" }
+serde = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

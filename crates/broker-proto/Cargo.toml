@@ -1,0 +1,9 @@
+[package]
+name = "broker-proto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core-model = { path = "../core-model" }
+serde = { workspace = true }
+postcard = { workspace = true }

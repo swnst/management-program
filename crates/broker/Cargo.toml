@@ -1,0 +1,12 @@
+[package]
+name = "broker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+broker-proto = { path = "../broker-proto" }
+platform-win = { path = "../platform-win" }
+scanner = { path = "../scanner" }
+vault = { path = "../vault" }
+windows = { workspace = true }
+tracing = { workspace = true }

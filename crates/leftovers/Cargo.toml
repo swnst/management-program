@@ -1,0 +1,10 @@
+[package]
+name = "leftovers"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core-model = { path = "../core-model" }
+platform-win = { path = "../platform-win" }
+windows = { workspace = true }
+serde = { workspace = true }

@@ -1,0 +1,10 @@
+[package]
+name = "platform-win"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core-model = { path = "../core-model" }
+windows = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

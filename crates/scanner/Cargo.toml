@@ -1,0 +1,13 @@
+[package]
+name = "scanner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core-model = { path = "../core-model" }
+platform-win = { path = "../platform-win" }
+serde = { workspace = true }
+rayon = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+windows = { workspace = true }

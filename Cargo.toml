@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core-model",
+    "crates/platform-win",
+    "crates/scanner",
+    "crates/junk-rules",
+    "crates/vault",
+    "crates/sysinsight",
+    "crates/dupes",
+    "crates/leftovers",
+    "crates/broker-proto",
+    "crates/broker",
+    "src-tauri",
+]
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rayon = "1.10"
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Ioctl",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_Security",
+    "Win32_System_SystemServices",
+    "Win32_System_Registry",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_UI_Shell",
+    "Win32_System_Memory",
+] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+blake3 = "1.5"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+sysinfo = "0.33"
+specta = { version = "=2.0.0-rc.20", features = ["derive"] }
+specta-typescript = "=0.0.7"
+tauri-specta = { version = "=2.0.0-rc.20", features = ["javascript", "typescript"] }
+postcard = { version = "1.0", features = ["alloc"] }
+toml = "0.8"
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }

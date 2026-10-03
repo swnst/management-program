@@ -1,0 +1,12 @@
+target/
+node_modules/
+dist/
+dist-electron/
+*.exe
+*.zip
+*.7z
+*.msix
+.vscode/
+.idea/
+.DS_Store
+*.log

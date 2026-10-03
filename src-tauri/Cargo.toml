@@ -1,0 +1,29 @@
+[package]
+name = "lumen-app"
+version = "0.1.0"
+description = "Lumen Production-grade Desktop System Utility"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "lumen_app_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-opener = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+core-model = { path = "../crates/core-model" }
+platform-win = { path = "../crates/platform-win" }
+scanner = { path = "../crates/scanner" }
+vault = { path = "../crates/vault" }
+junk-rules = { path = "../crates/junk-rules" }
+sysinsight = { path = "../crates/sysinsight" }
+dupes = { path = "../crates/dupes" }
+leftovers = { path = "../crates/leftovers" }
+specta = { workspace = true }
+tauri-specta = { workspace = true }
