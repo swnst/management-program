@@ -11,3 +11,5 @@ rayon = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 windows = { workspace = true }
+postcard = { workspace = true }
+chrono = { workspace = true }

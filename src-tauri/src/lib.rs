@@ -1,8 +1,7 @@
 use core_model::{CleanPlan, CleanResult, DiskSummary, MemoryInsight, StartupProgram};
 use junk_rules::JunkEngine;
 use platform_win::{list_fixed_volumes, recycle_path};
-use scanner::walk::scan_directory_walk;
-use std::path::Path;
+use scanner::{scan_volume_fast, CacheManager, ScanOptions};
 use sysinsight::{get_memory_insight, list_startup_programs};
 
 // --- Tauri Commands ---
@@ -13,18 +12,33 @@ fn get_disk_summary() -> Vec<DiskSummary> {
 }
 
 #[tauri::command]
-fn scan_folder(path: String) -> Result<serde_json::Value, String> {
-    let p = Path::new(&path);
-    if !p.exists() {
-        return Err("Directory does not exist".into());
+fn scan_volume(drive_letter: char) -> Result<serde_json::Value, String> {
+    let cache = CacheManager::new().ok();
+    if let Some(ref c) = cache {
+        if let Some(cached_index) = c.load_index(drive_letter) {
+            return Ok(serde_json::json!({
+                "volume_letter": cached_index.volume_letter,
+                "total_files": cached_index.total_files_count,
+                "total_dirs": cached_index.total_dirs_count,
+                "total_bytes": cached_index.total_size_bytes,
+                "is_cached": true,
+            }));
+        }
     }
 
-    let index = scan_directory_walk(p, None)?;
+    let options = ScanOptions::default();
+    let index = scan_volume_fast(drive_letter, format!("Drive {}", drive_letter), &options, None)?;
+
+    if let Some(ref c) = cache {
+        let _ = c.save_index(&index);
+    }
+
     Ok(serde_json::json!({
+        "volume_letter": index.volume_letter,
         "total_files": index.total_files_count,
         "total_dirs": index.total_dirs_count,
         "total_bytes": index.total_size_bytes,
-        "sample_files": index.files.into_iter().take(200).collect::<Vec<_>>()
+        "is_cached": false,
     }))
 }
 
@@ -62,7 +76,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             get_disk_summary,
-            scan_folder,
+            scan_volume,
             preview_junk_clean,
             execute_junk_clean,
             get_system_memory,
