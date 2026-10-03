@@ -348,9 +348,27 @@ export default function App() {
 
           {activeTab === "insight" && (
             <div className="space-y-6 max-w-4xl">
-              <div>
-                <h2 className="text-lg font-bold text-white">Memory Insight & Startup Manager</h2>
-                <p className="text-xs text-slate-400">Identify heavy memory processes and disable unneeded startup apps.</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Memory Insight & Startup Manager</h2>
+                  <p className="text-xs text-slate-400">Inspect real-time memory usage and optimize idle working sets safely.</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    setStatusMessage("Optimizing process memory working sets...");
+                    try {
+                      const freed = await invoke<number>("trim_system_memory");
+                      setStatusMessage(`Memory Optimization Complete: Trimmed ${formatBytes(freed)} idle working set.`);
+                      await loadMemory();
+                    } catch (e) {
+                      setStatusMessage("Memory optimization failed: " + String(e));
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 text-xs font-semibold flex items-center space-x-2 transition-all shadow-md shadow-indigo-950"
+                >
+                  <Sparkles className="w-4 h-4 text-indigo-400" />
+                  <span>Trim Memory (Safe)</span>
+                </button>
               </div>
 
               {/* Top Processes */}

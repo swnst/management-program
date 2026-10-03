@@ -2,7 +2,7 @@ use core_model::{CleanPlan, CleanResult, DiskSummary, MemoryInsight, StartupProg
 use junk_rules::JunkEngine;
 use scanner::walk::scan_directory_walk;
 use std::path::Path;
-use sysinsight::{get_memory_insight, list_startup_programs};
+use sysinsight::{get_memory_insight, list_startup_programs, trim_working_sets};
 use vault::SafetyVault;
 
 // --- Tauri Commands ---
@@ -54,6 +54,11 @@ fn get_system_memory() -> MemoryInsight {
 }
 
 #[tauri::command]
+fn trim_system_memory() -> u64 {
+    trim_working_sets()
+}
+
+#[tauri::command]
 fn get_startup_apps() -> Vec<StartupProgram> {
     list_startup_programs()
 }
@@ -82,6 +87,7 @@ pub fn run() {
             preview_junk_clean,
             execute_junk_clean,
             get_system_memory,
+            trim_system_memory,
             get_startup_apps,
             list_vault_quarantine,
             restore_vault_item,
