@@ -53,27 +53,28 @@ interface StartupApp {
   is_enabled: boolean;
 }
 
-interface VaultItem {
-  id: number;
-  original_path: string;
-  vault_path: string;
-  size_bytes: number;
-  deleted_timestamp_secs: number;
+interface DiskSummary {
+  volume_letter: string;
+  volume_name: string;
+  total_bytes: number;
+  free_bytes: number;
+  is_ntfs: boolean;
+  is_system: boolean;
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"home" | "explorer" | "cleaner" | "insight" | "vault">("home");
+  const [activeTab, setActiveTab] = useState<"home" | "explorer" | "cleaner" | "insight">("home");
+  const [disks, setDisks] = useState<DiskSummary[]>([]);
   const [cleanPlan, setCleanPlan] = useState<CleanPlan | null>(null);
   const [memory, setMemory] = useState<MemoryInsight | null>(null);
   const [startupApps, setStartupApps] = useState<StartupApp[]>([]);
-  const [vaultItems, setVaultItems] = useState<VaultItem[]>([]);
   const [statusMessage, setStatusMessage] = useState<string>("Ready");
   const [isScanning, setIsScanning] = useState(false);
 
   useEffect(() => {
+    loadDisks();
     loadMemory();
     loadStartup();
-    loadVault();
   }, []);
 
   const formatBytes = (bytes: number) => {
@@ -82,6 +83,15 @@ export default function App() {
     const sizes = ["B", "KB", "MB", "GB", "TB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
+
+  const loadDisks = async () => {
+    try {
+      const res = await invoke<DiskSummary[]>("get_disk_summary");
+      setDisks(res);
+    } catch (e) {
+      console.error("Failed to load disks:", e);
+    }
   };
 
   const loadMemory = async () => {
@@ -97,15 +107,6 @@ export default function App() {
     try {
       const res = await invoke<StartupApp[]>("get_startup_apps");
       setStartupApps(res);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const loadVault = async () => {
-    try {
-      const res = await invoke<VaultItem[]>("list_vault_quarantine");
-      setVaultItems(res);
     } catch (e) {
       console.error(e);
     }
@@ -192,16 +193,6 @@ export default function App() {
               <Cpu className="w-4 h-4" />
               <span>Memory & Startup</span>
             </button>
-
-            <button
-              onClick={() => setActiveTab("vault")}
-              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === "vault" ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Safety Vault</span>
-            </button>
           </nav>
         </div>
 
@@ -273,16 +264,36 @@ export default function App() {
 
               {/* Metric Cards Grid */}
               <div className="grid grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/50 backdrop-blur space-y-2">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>C: Free Storage</span>
-                    <HardDrive className="w-4 h-4 text-sky-400" />
+                {disks.length > 0 ? (
+                  disks.map((d) => {
+                    const usedBytes = d.total_bytes - d.free_bytes;
+                    const usedPercent = d.total_bytes > 0 ? Math.round((usedBytes / d.total_bytes) * 100) : 0;
+                    return (
+                      <div key={d.volume_letter} className="p-4 rounded-xl border border-slate-800 bg-slate-900/50 backdrop-blur space-y-2">
+                        <div className="flex items-center justify-between text-xs text-slate-400">
+                          <span>{d.volume_name} ({d.volume_letter}:)</span>
+                          <HardDrive className="w-4 h-4 text-sky-400" />
+                        </div>
+                        <div className="text-xl font-bold text-white">{formatBytes(d.free_bytes)} Free</div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
+                          <span>Used: {formatBytes(usedBytes)}</span>
+                          <span>Total: {formatBytes(d.total_bytes)}</span>
+                        </div>
+                        <div className="w-full bg-slate-800 rounded-full h-1.5">
+                          <div className="bg-sky-500 h-1.5 rounded-full" style={{ width: `${usedPercent}%` }}></div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/50 backdrop-blur space-y-2">
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span>Storage</span>
+                      <HardDrive className="w-4 h-4 text-sky-400" />
+                    </div>
+                    <div className="text-xl font-bold text-white">Detecting...</div>
                   </div>
-                  <div className="text-xl font-bold text-white">220.4 GB Free</div>
-                  <div className="w-full bg-slate-800 rounded-full h-1.5">
-                    <div className="bg-sky-500 h-1.5 rounded-full" style={{ width: "57%" }}></div>
-                  </div>
-                </div>
+                )}
 
                 <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/50 backdrop-blur space-y-2">
                   <div className="flex items-center justify-between text-xs text-slate-400">
@@ -304,11 +315,11 @@ export default function App() {
 
                 <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/50 backdrop-blur space-y-2">
                   <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>Safety Vault Items</span>
+                    <span>Recycle Bin Protection</span>
                     <ShieldCheck className="w-4 h-4 text-emerald-400" />
                   </div>
-                  <div className="text-xl font-bold text-white">{vaultItems.length} Backed Up</div>
-                  <div className="text-xs text-slate-500">7 Days Retention Window</div>
+                  <div className="text-xl font-bold text-white">Active</div>
+                  <div className="text-xs text-slate-500">Windows Shell Undo Available</div>
                 </div>
               </div>
 
@@ -351,23 +362,18 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-white">Memory Insight & Startup Manager</h2>
-                  <p className="text-xs text-slate-400">Inspect real-time memory usage and optimize idle working sets safely.</p>
+                  <p className="text-xs text-slate-400">Inspect real-time memory usage and background startup applications.</p>
                 </div>
                 <button
                   onClick={async () => {
-                    setStatusMessage("Optimizing process memory working sets...");
-                    try {
-                      const freed = await invoke<number>("trim_system_memory");
-                      setStatusMessage(`Memory Optimization Complete: Trimmed ${formatBytes(freed)} idle working set.`);
-                      await loadMemory();
-                    } catch (e) {
-                      setStatusMessage("Memory optimization failed: " + String(e));
-                    }
+                    setStatusMessage("Refreshing process memory stats...");
+                    await loadMemory();
+                    setStatusMessage("Memory metrics updated.");
                   }}
-                  className="px-4 py-2 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 text-xs font-semibold flex items-center space-x-2 transition-all shadow-md shadow-indigo-950"
+                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center space-x-2 transition-all"
                 >
-                  <Sparkles className="w-4 h-4 text-indigo-400" />
-                  <span>Trim Memory (Safe)</span>
+                  <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Refresh Telemetry</span>
                 </button>
               </div>
 
@@ -406,47 +412,6 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "vault" && (
-            <div className="space-y-6 max-w-4xl">
-              <div>
-                <h2 className="text-lg font-bold text-white">Safety Vault</h2>
-                <p className="text-xs text-slate-400">All user-deleted files are safely stored here for 7 days before permanent purge.</p>
-              </div>
-
-              <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40 divide-y divide-slate-800/80">
-                {vaultItems.length === 0 ? (
-                  <div className="p-8 text-center text-slate-500 text-sm">
-                    No files currently quarantined in the safety vault.
-                  </div>
-                ) : (
-                  vaultItems.map((item) => (
-                    <div key={item.id} className="p-4 flex items-center justify-between">
-                      <div className="space-y-1 max-w-lg">
-                        <div className="font-medium text-sm text-slate-200 truncate">{item.original_path}</div>
-                        <div className="text-xs text-slate-500">Size: {formatBytes(item.size_bytes)}</div>
-                      </div>
-                      <button
-                        onClick={async () => {
-                          try {
-                            await invoke("restore_vault_item", { itemId: item.id });
-                            setStatusMessage("File restored successfully.");
-                            loadVault();
-                          } catch (e) {
-                            setStatusMessage("Failed to restore: " + String(e));
-                          }
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-medium flex items-center space-x-1.5 transition-colors"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Restore</span>
-                      </button>
-                    </div>
-                  ))
-                )}
               </div>
             </div>
           )}

@@ -85,3 +85,100 @@ pub fn safe_close_handle(handle: HANDLE) {
         }
     }
 }
+
+pub fn list_fixed_volumes() -> Vec<core_model::DiskSummary> {
+    use windows::Win32::Storage::FileSystem::{
+        GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDriveStringsW, GetVolumeInformationW,
+    };
+
+    let mut drives = Vec::new();
+    let mut buffer = [0u16; 512];
+
+    unsafe {
+        let len = GetLogicalDriveStringsW(Some(&mut buffer));
+        if len == 0 || len > buffer.len() as u32 {
+            return drives;
+        }
+
+        let sys_drive_letter = std::env::var("SystemDrive")
+            .unwrap_or_else(|_| "C:".to_string())
+            .chars()
+            .next()
+            .unwrap_or('C')
+            .to_ascii_uppercase();
+
+        let mut start = 0;
+        while start < len as usize {
+            let mut end = start;
+            while end < len as usize && buffer[end] != 0 {
+                end += 1;
+            }
+
+            if end > start {
+                let drive_str_utf16 = &buffer[start..=end]; // includes null terminator
+                let drive_type = GetDriveTypeW(PCWSTR::from_raw(drive_str_utf16.as_ptr()));
+
+                // DRIVE_FIXED has constant value 3 in Win32
+                if drive_type == 3 {
+                    let drive_char = buffer[start] as u8 as char;
+                    let letter = drive_char.to_ascii_uppercase();
+
+                    let mut free_bytes_available = 0u64;
+                    let mut total_number_of_bytes = 0u64;
+                    let mut total_number_of_free_bytes = 0u64;
+
+                    let space_ok = GetDiskFreeSpaceExW(
+                        PCWSTR::from_raw(drive_str_utf16.as_ptr()),
+                        Some(&mut free_bytes_available),
+                        Some(&mut total_number_of_bytes),
+                        Some(&mut total_number_of_free_bytes),
+                    )
+                    .is_ok();
+
+                    let mut volume_name_buf = [0u16; 261];
+                    let mut fs_name_buf = [0u16; 261];
+                    let mut serial_number = 0u32;
+                    let mut max_component_len = 0u32;
+                    let mut file_system_flags = 0u32;
+
+                    let _ = GetVolumeInformationW(
+                        PCWSTR::from_raw(drive_str_utf16.as_ptr()),
+                        Some(&mut volume_name_buf),
+                        Some(&mut serial_number),
+                        Some(&mut max_component_len),
+                        Some(&mut file_system_flags),
+                        Some(&mut fs_name_buf),
+                    );
+
+                    let vol_name_raw = String::from_utf16_lossy(&volume_name_buf)
+                        .trim_matches('\0')
+                        .to_string();
+                    let vol_name = if vol_name_raw.is_empty() {
+                        format!("Local Disk ({}:)", letter)
+                    } else {
+                        vol_name_raw
+                    };
+
+                    let fs_name = String::from_utf16_lossy(&fs_name_buf)
+                        .trim_matches('\0')
+                        .to_string();
+
+                    if space_ok {
+                        drives.push(core_model::DiskSummary {
+                            volume_letter: letter,
+                            volume_name: vol_name,
+                            total_bytes: total_number_of_bytes,
+                            free_bytes: free_bytes_available,
+                            is_ntfs: fs_name.eq_ignore_ascii_case("NTFS"),
+                            is_system: letter == sys_drive_letter,
+                        });
+                    }
+                }
+            }
+
+            start = end + 1;
+        }
+    }
+
+    drives
+}

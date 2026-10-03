@@ -1,22 +1,15 @@
-use core_model::{CleanPlan, CleanResult, DiskSummary, MemoryInsight, StartupProgram, VaultItem};
+use core_model::{CleanPlan, CleanResult, DiskSummary, MemoryInsight, StartupProgram};
 use junk_rules::JunkEngine;
+use platform_win::{list_fixed_volumes, recycle_path};
 use scanner::walk::scan_directory_walk;
 use std::path::Path;
-use sysinsight::{get_memory_insight, list_startup_programs, trim_working_sets};
-use vault::SafetyVault;
+use sysinsight::{get_memory_insight, list_startup_programs};
 
 // --- Tauri Commands ---
 
 #[tauri::command]
 fn get_disk_summary() -> Vec<DiskSummary> {
-    vec![DiskSummary {
-        volume_letter: 'C',
-        volume_name: "Local Disk".into(),
-        total_bytes: 512 * 1024 * 1024 * 1024,
-        free_bytes: 220 * 1024 * 1024 * 1024,
-        is_ntfs: true,
-        is_system: true,
-    }]
+    list_fixed_volumes()
 }
 
 #[tauri::command]
@@ -54,27 +47,13 @@ fn get_system_memory() -> MemoryInsight {
 }
 
 #[tauri::command]
-fn trim_system_memory() -> u64 {
-    trim_working_sets()
-}
-
-#[tauri::command]
 fn get_startup_apps() -> Vec<StartupProgram> {
     list_startup_programs()
 }
 
 #[tauri::command]
-fn list_vault_quarantine() -> Result<Vec<VaultItem>, String> {
-    let vault_path = std::env::temp_dir().join(".lumen_vault");
-    let vault = SafetyVault::new(vault_path)?;
-    vault.list_items()
-}
-
-#[tauri::command]
-fn restore_vault_item(item_id: i64) -> Result<(), String> {
-    let vault_path = std::env::temp_dir().join(".lumen_vault");
-    let vault = SafetyVault::new(vault_path)?;
-    vault.restore_file(item_id)
+fn recycle_file_or_folder(path: String) -> Result<(), String> {
+    recycle_path(path)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -87,10 +66,8 @@ pub fn run() {
             preview_junk_clean,
             execute_junk_clean,
             get_system_memory,
-            trim_system_memory,
             get_startup_apps,
-            list_vault_quarantine,
-            restore_vault_item,
+            recycle_file_or_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

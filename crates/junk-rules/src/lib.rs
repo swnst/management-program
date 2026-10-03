@@ -194,10 +194,21 @@ fn delete_contents(dir: &Path) -> (u64, u64, Vec<String>) {
     let mut count = 0u64;
     let mut errors = Vec::new();
 
+    let now = std::time::SystemTime::now();
+
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let p = entry.path();
             if let Ok(m) = entry.metadata() {
+                // Skip files younger than 24 hours to avoid deleting active temporary files
+                if let Ok(modified) = m.modified() {
+                    if let Ok(age) = now.duration_since(modified) {
+                        if age.as_secs() < 24 * 3600 {
+                            continue;
+                        }
+                    }
+                }
+
                 if m.is_file() {
                     let len = m.len();
                     match fs::remove_file(&p) {

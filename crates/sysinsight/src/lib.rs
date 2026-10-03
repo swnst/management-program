@@ -1,13 +1,10 @@
 use core_model::{MemoryInsight, ProcessMemoryItem, StartupProgram};
 use sysinfo::System;
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::CloseHandle;
-use windows::Win32::System::ProcessStatus::EmptyWorkingSet;
 use windows::Win32::System::Registry::{
     RegCloseKey, RegEnumValueW, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER,
     HKEY_LOCAL_MACHINE, KEY_READ,
 };
-use windows::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA};
 
 pub fn get_memory_insight() -> MemoryInsight {
     let mut sys = System::new_all();
@@ -42,32 +39,6 @@ pub fn get_memory_insight() -> MemoryInsight {
         standby_ram_bytes: 0,
         modified_ram_bytes: 0,
         top_processes: procs,
-    }
-}
-
-pub fn trim_working_sets() -> u64 {
-    let mut sys = System::new_all();
-    sys.refresh_all();
-    let before_used = sys.used_memory();
-
-    for (pid, _) in sys.processes() {
-        let raw_pid = pid.as_u32();
-        unsafe {
-            if let Ok(handle) = OpenProcess(PROCESS_SET_QUOTA, false, raw_pid) {
-                let _ = EmptyWorkingSet(handle);
-                let _ = CloseHandle(handle);
-            }
-        }
-    }
-
-    let mut sys_after = System::new_all();
-    sys_after.refresh_all();
-    let after_used = sys_after.used_memory();
-
-    if before_used > after_used {
-        before_used - after_used
-    } else {
-        0
     }
 }
 
