@@ -590,12 +590,38 @@ export default function App() {
               </div>
 
               {memory && (
-                <Card className="bg-[#1a1a1a] border border-[#2b2b2b] p-4 space-y-2">
-                  <div className="flex justify-between text-xs text-neutral-300">
-                    <span>การใช้งาน RAM จริง</span>
-                    <span>{formatBytes(memory.used_ram_bytes)} / {formatBytes(memory.total_ram_bytes)} ({Math.round((memory.used_ram_bytes / memory.total_ram_bytes) * 100)}%)</span>
+                <Card className="bg-[#1a1a1a] border border-[#2b2b2b] p-5 space-y-4">
+                  <div className="flex justify-between items-center text-xs text-neutral-300">
+                    <span className="font-semibold text-white">การใช้งาน RAM จริง</span>
+                    <span className="font-mono">{formatBytes(memory.used_ram_bytes)} / {formatBytes(memory.total_ram_bytes)} ({Math.round((memory.used_ram_bytes / memory.total_ram_bytes) * 100)}%)</span>
                   </div>
                   <ProgressBar value={memory.used_ram_bytes / memory.total_ram_bytes} />
+
+                  <div className="pt-2 border-t border-[#2b2b2b] flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-white block">Standby Memory Cache Purge</span>
+                      <span className="text-[11px] text-neutral-400">
+                        เคลียร์ Standby List Cache ของระบบ Windows จริงด้วยสิทธิ์ SeProfileSingleProcessPrivilege (ไม่มี placebo)
+                      </span>
+                    </div>
+                    <Button
+                      appearance="primary"
+                      size="medium"
+                      onClick={async () => {
+                        try {
+                          setStatusText("กำลังเคลียร์ Standby List Cache ของ Windows...");
+                          const res = await invoke<string>("purge_standby_memory");
+                          setStatusText(res);
+                          const mem = await invoke<MemoryInsight>("get_system_memory");
+                          setMemory(mem);
+                        } catch (err: any) {
+                          setStatusText(`เคลียร์ไม่สำเร็จ: ${err}`);
+                        }
+                      }}
+                    >
+                      เคลียร์ Standby Cache
+                    </Button>
+                  </div>
                 </Card>
               )}
 

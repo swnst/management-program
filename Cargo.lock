@@ -974,6 +974,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "core-model",
+ "leftovers",
  "serde",
  "thiserror 2.0.21",
  "xxhash-rust",
@@ -2226,6 +2227,8 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 name = "lumen-app"
 version = "0.1.0"
 dependencies = [
+ "broker",
+ "broker-proto",
  "core-model",
  "dupes",
  "junk-rules",
@@ -3173,8 +3176,10 @@ dependencies = [
 name = "scanner"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "core-model",
  "platform-win",
+ "postcard",
  "rayon",
  "serde",
  "thiserror 2.0.21",

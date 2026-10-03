@@ -25,5 +25,7 @@ junk-rules = { path = "../crates/junk-rules" }
 sysinsight = { path = "../crates/sysinsight" }
 dupes = { path = "../crates/dupes" }
 leftovers = { path = "../crates/leftovers" }
+broker-proto = { path = "../crates/broker-proto" }
+broker = { path = "../crates/broker" }
 specta = { workspace = true }
 tauri-specta = { workspace = true }

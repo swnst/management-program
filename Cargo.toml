@@ -34,6 +34,8 @@ windows = { version = "0.58", features = [
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_UI_Shell",
     "Win32_System_Memory",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Pipes",
 ] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 blake3 = "1.5"

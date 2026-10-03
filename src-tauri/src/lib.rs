@@ -70,6 +70,39 @@ fn recycle_file_or_folder(path: String) -> Result<(), String> {
     recycle_path(path)
 }
 
+#[tauri::command]
+fn purge_standby_memory() -> Result<String, String> {
+    // Attempt elevated Broker via named pipe first
+    if let Ok(client) = broker::BrokerClient::connect() {
+        match client.send_request(&broker_proto::BrokerRequest::PurgeStandbyList) {
+            Ok(broker_proto::BrokerResponse::Success) => {
+                return Ok("Standby list purged successfully via Privileged Broker.".into());
+            }
+            Ok(broker_proto::BrokerResponse::Error(err)) => {
+                return Err(format!("Broker error: {}", err));
+            }
+            _ => {}
+        }
+    }
+
+    // Fallback: in-process if already elevated
+    platform_win::purge_standby_list()
+        .map(|_| "Standby list purged successfully in current process.".into())
+        .map_err(|e| format!("Purge failed (run Broker as Admin or elevate): {}", e))
+}
+
+#[tauri::command]
+fn check_broker_status() -> bool {
+    if let Ok(client) = broker::BrokerClient::connect() {
+        matches!(
+            client.send_request(&broker_proto::BrokerRequest::Ping),
+            Ok(broker_proto::BrokerResponse::Pong)
+        )
+    } else {
+        false
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -82,6 +115,8 @@ pub fn run() {
             get_system_memory,
             get_startup_apps,
             recycle_file_or_folder,
+            purge_standby_memory,
+            check_broker_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

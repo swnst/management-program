@@ -1,7 +1,9 @@
+pub mod memory;
 pub mod privilege;
 pub mod recycle;
 pub mod volume;
 
+pub use memory::purge_standby_list;
 pub use privilege::{enable_privilege, is_elevated};
 pub use recycle::recycle_path;
 pub use volume::{
