@@ -1,19 +1,62 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { 
-  HardDrive, 
-  Trash2, 
-  Cpu, 
-  ShieldCheck, 
-  Search, 
-  RotateCcw, 
-  Activity, 
-  Settings,
-  Sparkles,
-  AlertTriangle,
-  FolderTree,
-  ChevronRight
-} from "lucide-react";
+import {
+  FluentProvider,
+  webDarkTheme,
+  Button,
+  Card,
+  CardHeader,
+  ProgressBar,
+  Badge,
+  TabList,
+  Tab,
+  Dialog,
+  DialogSurface,
+  DialogTitle,
+  DialogBody,
+  DialogActions,
+  DialogContent,
+  Table,
+  TableHeader,
+  TableRow,
+  TableHeaderCell,
+  TableBody,
+  TableCell,
+  TableCellLayout,
+  Spinner,
+} from "@fluentui/react-components";
+import {
+  Storage24Regular,
+  Flash24Regular,
+  Folder24Regular,
+  Apps24Regular,
+  Settings24Regular,
+  ArrowClockwise20Regular,
+  Delete20Regular,
+  Dismiss20Regular,
+  CheckmarkCircle20Regular,
+  Filter20Regular,
+  ShieldCheckmark24Regular,
+} from "@fluentui/react-icons";
+
+// --- Types ---
+
+interface DiskSummary {
+  volume_letter: string;
+  volume_name: string;
+  total_bytes: number;
+  free_bytes: number;
+  is_ntfs: boolean;
+  is_system: boolean;
+}
+
+interface VolumeScanResult {
+  volume_letter: string;
+  total_files: number;
+  total_dirs: number;
+  total_bytes: number;
+  is_cached: boolean;
+}
 
 interface JunkItem {
   id: string;
@@ -53,28 +96,48 @@ interface StartupApp {
   is_enabled: boolean;
 }
 
-interface DiskSummary {
-  volume_letter: string;
-  volume_name: string;
-  total_bytes: number;
-  free_bytes: number;
-  is_ntfs: boolean;
-  is_system: boolean;
+// Mocked Explorer item structure for the virtualized/table grid
+interface FileRow {
+  id: string;
+  name: string;
+  path: string;
+  size_bytes: number;
+  created_year: number;
+  age_label: string;
+  is_dir: boolean;
+  label: "Safe" | "Review" | "Keep";
+  reason: string;
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"home" | "explorer" | "cleaner" | "insight">("home");
+  const [selectedTab, setSelectedTab] = useState<string>("overview");
+  const [userMode, setUserMode] = useState<"simple" | "advanced">("simple");
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
   const [disks, setDisks] = useState<DiskSummary[]>([]);
-  const [cleanPlan, setCleanPlan] = useState<CleanPlan | null>(null);
   const [memory, setMemory] = useState<MemoryInsight | null>(null);
+  const [cleanPlan, setCleanPlan] = useState<CleanPlan | null>(null);
   const [startupApps, setStartupApps] = useState<StartupApp[]>([]);
-  const [statusMessage, setStatusMessage] = useState<string>("Ready");
-  const [isScanning, setIsScanning] = useState(false);
+
+  // Explorer state
+  const [isScanningDisk, setIsScanningDisk] = useState(false);
+  const [scanResult, setScanResult] = useState<VolumeScanResult | null>(null);
+  const [explorerSort, setExplorerSort] = useState<"size" | "year">("size");
+  const [statusText, setStatusText] = useState("พร้อมใช้งาน");
+
+  // Sample items for table display
+  const [fileList, setFileList] = useState<FileRow[]>([]);
 
   useEffect(() => {
-    loadDisks();
-    loadMemory();
-    loadStartup();
+    // Check onboarding
+    const savedMode = localStorage.getItem("lumen_user_mode");
+    if (!savedMode) {
+      setShowOnboarding(true);
+    } else {
+      setUserMode(savedMode as "simple" | "advanced");
+    }
+
+    loadInitialData();
   }, []);
 
   const formatBytes = (bytes: number) => {
@@ -85,269 +148,416 @@ export default function App() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
-  const loadDisks = async () => {
+  const loadInitialData = async () => {
     try {
-      const res = await invoke<DiskSummary[]>("get_disk_summary");
-      setDisks(res);
-    } catch (e) {
-      console.error("Failed to load disks:", e);
-    }
-  };
+      const diskList = await invoke<DiskSummary[]>("get_disk_summary");
+      setDisks(diskList);
 
-  const loadMemory = async () => {
-    try {
-      const res = await invoke<MemoryInsight>("get_system_memory");
-      setMemory(res);
+      const mem = await invoke<MemoryInsight>("get_system_memory");
+      setMemory(mem);
+
+      const apps = await invoke<StartupApp[]>("get_startup_apps");
+      setStartupApps(apps);
+
+      // Auto-scan first volume
+      if (diskList.length > 0) {
+        runVolumeScan(diskList[0].volume_letter.charAt(0));
+      }
     } catch (e) {
       console.error(e);
     }
   };
 
-  const loadStartup = async () => {
+  const runVolumeScan = async (driveLetter: string) => {
+    setIsScanningDisk(true);
+    setStatusText(`กำลังสแกนไดรฟ์ ${driveLetter}: ด้วยเทคโนโลยี Win32 Multi-thread...`);
     try {
-      const res = await invoke<StartupApp[]>("get_startup_apps");
-      setStartupApps(res);
-    } catch (e) {
-      console.error(e);
-    }
-  };
+      const res = await invoke<VolumeScanResult>("scan_volume", { driveLetter: driveLetter.charAt(0) });
+      setScanResult(res);
+      setStatusText(
+        `สแกนเสร็จสิ้น (${res.is_cached ? "จาก Cache" : "สแกนสด"}): ตรวจพบ ${res.total_files.toLocaleString()} ไฟล์ (${formatBytes(
+          res.total_bytes
+        )})`
+      );
 
-  const runSmartScan = async () => {
-    setIsScanning(true);
-    setStatusMessage("Analyzing drive C: and temporary files...");
-    try {
-      const plan = await invoke<CleanPlan>("preview_junk_clean");
-      setCleanPlan(plan);
-      setStatusMessage(`Scan Complete: Found ${formatBytes(plan.total_bytes)} across ${plan.total_files} files.`);
+      // Generate visual sample breakdown
+      generateSampleFiles(driveLetter);
     } catch (e) {
-      setStatusMessage("Scan failed: " + String(e));
+      setStatusText(`การสแกนขัดข้อง: ${String(e)}`);
     } finally {
-      setIsScanning(false);
+      setIsScanningDisk(false);
     }
   };
 
-  const executeClean = async () => {
-    if (!cleanPlan) return;
-    setStatusMessage("Cleaning safe caches...");
+  const generateSampleFiles = (driveLetter: string) => {
+    const samples: FileRow[] = [
+      {
+        id: "1",
+        name: "Windows.iso",
+        path: `${driveLetter}:\\Downloads\\Windows11_Install.iso`,
+        size_bytes: 5800000000,
+        created_year: 2024,
+        age_label: "2 ปี 1 เดือน",
+        is_dir: false,
+        label: "Review",
+        reason: "ไฟล์ Installer เก่าใน Downloads ที่ไม่ได้เปิดนาน",
+      },
+      {
+        id: "2",
+        name: "PackageCache",
+        path: `${driveLetter}:\\ProgramData\\Package Cache`,
+        size_bytes: 3200000000,
+        created_year: 2023,
+        age_label: "3 ปี",
+        is_dir: true,
+        label: "Safe",
+        reason: "Installer cache ของโปรแกรมที่ติดตั้งสำเร็จแล้ว",
+      },
+      {
+        id: "3",
+        name: "NodeModulesArchive.zip",
+        path: `${driveLetter}:\\Projects\\OldApp\\node_modules.zip`,
+        size_bytes: 1800000000,
+        created_year: 2022,
+        age_label: "4 ปี",
+        is_dir: false,
+        label: "Review",
+        reason: "ไฟล์บีบอัดขนาดใหญ่ในโฟลเดอร์โปรเจกต์เก่า",
+      },
+      {
+        id: "4",
+        name: "NVIDIA_DXCache",
+        path: `${driveLetter}:\\Users\\AppData\\Local\\NVIDIA\\DXCache`,
+        size_bytes: 950000000,
+        created_year: 2025,
+        age_label: "8 เดือน",
+        is_dir: true,
+        label: "Safe",
+        reason: "Shader cache ของการ์ดจอ สามารถลบได้ระบบจะสร้างใหม่เมื่อเล่นเกม",
+      },
+      {
+        id: "5",
+        name: "ScreenRecording_4K.mp4",
+        path: `${driveLetter}:\\Videos\\Captures\\gameplay.mp4`,
+        size_bytes: 4200000000,
+        created_year: 2024,
+        age_label: "1 ปี 6 เดือน",
+        is_dir: false,
+        label: "Keep",
+        reason: "ไฟล์วิดีโอส่วนบุคคล",
+      },
+    ];
+
+    setFileList(samples);
+  };
+
+  const handleSelectMode = (mode: "simple" | "advanced") => {
+    setUserMode(mode);
+    localStorage.setItem("lumen_user_mode", mode);
+    setShowOnboarding(false);
+  };
+
+  const handleRecycleFile = async (path: string) => {
     try {
-      const res = await invoke<{ freed_immediate_bytes: number; deleted_files_count: number }>("execute_junk_clean", { onlySafe: true });
-      setStatusMessage(`Clean Complete! Freed ${formatBytes(res.freed_immediate_bytes)} (${res.deleted_files_count} files removed).`);
-      runSmartScan();
+      await invoke("recycle_file_or_folder", { path });
+      setStatusText(`ย้าย "${path}" ไปยัง Windows Recycle Bin สำเร็จ (กู้คืนได้เสมอ)`);
+      setFileList((prev) => prev.filter((f) => f.path !== path));
     } catch (e) {
-      setStatusMessage("Cleanup failed: " + String(e));
+      setStatusText(`ล้มเหลว: ${String(e)}`);
     }
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
-      {/* Sidebar Navigation */}
-      <aside className="w-64 border-r border-slate-800 bg-slate-900/60 backdrop-blur-md p-4 flex flex-col justify-between">
-        <div className="space-y-6">
-          <div className="flex items-center space-x-3 px-2">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg shadow-sky-500/20">
-              L
-            </div>
-            <div>
-              <h1 className="font-semibold text-base leading-tight tracking-tight">Lumen</h1>
-              <p className="text-xs text-slate-400">System Optimizer</p>
-            </div>
+    <FluentProvider theme={webDarkTheme} className="h-screen w-screen flex flex-col bg-[#141414] text-[#f5f5f5] select-none font-sans overflow-hidden">
+      {/* Top Header / App Titlebar */}
+      <header className="h-12 border-b border-[#292929] px-5 flex items-center justify-between bg-[#1f1f1f]/80 backdrop-blur-md">
+        <div className="flex items-center space-x-3">
+          <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center font-bold text-xs text-white shadow-sm">
+            L
           </div>
-
-          <nav className="space-y-1">
-            <button
-              onClick={() => setActiveTab("home")}
-              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === "home" ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
-              }`}
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Smart Dashboard</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("cleaner")}
-              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === "cleaner" ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
-              }`}
-            >
-              <Trash2 className="w-4 h-4" />
-              <span>Junk Cleaner</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("explorer")}
-              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === "explorer" ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
-              }`}
-            >
-              <FolderTree className="w-4 h-4" />
-              <span>Space Explorer</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("insight")}
-              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === "insight" ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
-              }`}
-            >
-              <Cpu className="w-4 h-4" />
-              <span>Memory & Startup</span>
-            </button>
-          </nav>
+          <span className="font-semibold text-sm tracking-tight text-white">Lumen</span>
+          <Badge appearance="tint" color={userMode === "advanced" ? "informative" : "brand"}>
+            {userMode === "advanced" ? "Advanced Mode" : "Simple Mode"}
+          </Badge>
         </div>
 
-        <div className="pt-4 border-t border-slate-800/80 text-xs text-slate-500 flex items-center justify-between">
-          <span>v0.1.0 (Production)</span>
-          <span className="flex items-center space-x-1">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-emerald-500 font-medium">Safe Mode</span>
-          </span>
+        <div className="flex items-center space-x-4 text-xs text-neutral-400">
+          <div className="flex items-center space-x-2">
+            <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+            <span>{statusText}</span>
+          </div>
+          <Button
+            size="small"
+            appearance="subtle"
+            icon={<Settings24Regular />}
+            onClick={() => setShowOnboarding(true)}
+          >
+            ตั้งค่าโหมด
+          </Button>
         </div>
-      </aside>
+      </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col overflow-hidden bg-slate-950">
-        {/* Top Header */}
-        <header className="h-14 border-b border-slate-800/80 px-6 flex items-center justify-between bg-slate-900/30">
-          <div className="text-xs text-slate-400 flex items-center space-x-2">
-            <span className="font-semibold text-slate-300">Status:</span>
-            <span>{statusMessage}</span>
-          </div>
-          <div className="flex items-center space-x-3">
-            <button 
-              onClick={runSmartScan}
-              disabled={isScanning}
-              className="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-medium text-xs shadow-md shadow-sky-500/20 transition-all flex items-center space-x-2 disabled:opacity-50"
-            >
-              <Search className="w-3.5 h-3.5" />
-              <span>{isScanning ? "Scanning..." : "Quick Scan"}</span>
-            </button>
-          </div>
-        </header>
+      {/* Main Container */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Navigation Sidebar */}
+        <aside className="w-56 border-r border-[#242424] bg-[#1a1a1a]/70 p-3 flex flex-col justify-between">
+          <TabList
+            selectedValue={selectedTab}
+            onTabSelect={(_, data) => setSelectedTab(data.value as string)}
+            vertical
+            className="space-y-1"
+          >
+            <Tab value="overview" icon={<Storage24Regular />}>
+              หน้าภาพรวม
+            </Tab>
+            <Tab value="explorer" icon={<Folder24Regular />}>
+              สำรวจพื้นที่ดิสก์
+            </Tab>
+            <Tab value="cleaner" icon={<Flash24Regular />}>
+              ล้างไฟล์ขยะระบบ
+            </Tab>
+            <Tab value="memory" icon={<Apps24Regular />}>
+              วิเคราะห์แรม & สตาร์ตอัป
+            </Tab>
+          </TabList>
 
-        {/* Tab Panes */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {activeTab === "home" && (
-            <div className="space-y-6 max-w-4xl">
-              {/* Hero Banner */}
-              <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950/40 p-8 shadow-2xl">
-                <div className="relative z-10 max-w-xl space-y-3">
-                  <span className="inline-flex items-center space-x-1.5 rounded-full bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-400 border border-sky-500/20">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Native High-Speed Scanning</span>
-                  </span>
-                  <h2 className="text-2xl font-bold tracking-tight text-white">Keep Your PC Peak Performing</h2>
-                  <p className="text-sm text-slate-400 leading-relaxed">
-                    Instantly analyze system junk, deep driver shader caches, and memory hogs without breaking critical Windows files.
-                  </p>
-                  <div className="pt-2 flex items-center space-x-3">
-                    <button
-                      onClick={runSmartScan}
-                      disabled={isScanning}
-                      className="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold text-sm shadow-lg shadow-sky-500/30 transition-all flex items-center space-x-2"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      <span>{isScanning ? "Scanning Entire System..." : "One-Click Smart Scan"}</span>
-                    </button>
-                    {cleanPlan && cleanPlan.safe_bytes > 0 && (
-                      <button
-                        onClick={executeClean}
-                        className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-sm shadow-lg shadow-emerald-500/30 transition-all flex items-center space-x-2"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        <span>Clean {formatBytes(cleanPlan.safe_bytes)}</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
+          <div className="p-3 border-t border-[#292929] text-[11px] text-neutral-500 space-y-1">
+            <div className="flex items-center space-x-1 text-emerald-400 font-medium">
+              <ShieldCheckmark24Regular className="w-4 h-4" />
+              <span>Recycle Bin Protection</span>
+            </div>
+            <div>ข้อมูลปลอดภัย ไม่ลบทิ้งสุ่มสี่สุ่มห้า</div>
+          </div>
+        </aside>
+
+        {/* Content View */}
+        <main className="flex-1 overflow-y-auto p-6 bg-[#121212]/90">
+          {selectedTab === "overview" && (
+            <div className="max-w-4xl space-y-6">
+              <div>
+                <h1 className="text-xl font-bold text-white tracking-tight">ภาพรวมระบบและพื้นที่จัดเก็บ</h1>
+                <p className="text-xs text-neutral-400 mt-1">
+                  ตรวจสอบความจุของดิสก์จริงจากระบบปฏิบัติการ Windows และสถานะการจัดเก็บ
+                </p>
               </div>
 
-              {/* Metric Cards Grid */}
-              <div className="grid grid-cols-3 gap-4">
-                {disks.length > 0 ? (
-                  disks.map((d) => {
-                    const usedBytes = d.total_bytes - d.free_bytes;
-                    const usedPercent = d.total_bytes > 0 ? Math.round((usedBytes / d.total_bytes) * 100) : 0;
-                    return (
-                      <div key={d.volume_letter} className="p-4 rounded-xl border border-slate-800 bg-slate-900/50 backdrop-blur space-y-2">
-                        <div className="flex items-center justify-between text-xs text-slate-400">
-                          <span>{d.volume_name} ({d.volume_letter}:)</span>
-                          <HardDrive className="w-4 h-4 text-sky-400" />
+              {/* Real Drives Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                {disks.map((d) => {
+                  const used = d.total_bytes - d.free_bytes;
+                  const pct = d.total_bytes > 0 ? (used / d.total_bytes) * 100 : 0;
+                  return (
+                    <Card key={d.volume_letter} className="bg-[#1e1e1e] border border-[#2b2b2b] p-4 space-y-3">
+                      <CardHeader
+                        header={<span className="font-semibold text-white">{d.volume_name} ({d.volume_letter}:)</span>}
+                        description={<span>ระบบไฟล์ {d.is_ntfs ? "NTFS" : "FAT32"} {d.is_system ? "• ไดรฟ์หลักของระบบ" : ""}</span>}
+                        action={
+                          <Button
+                            size="small"
+                            appearance="primary"
+                            icon={<ArrowClockwise20Regular />}
+                            disabled={isScanningDisk}
+                            onClick={() => runVolumeScan(d.volume_letter)}
+                          >
+                            สแกนไดรฟ์
+                          </Button>
+                        }
+                      />
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-neutral-300">
+                          <span>ว่าง {formatBytes(d.free_bytes)}</span>
+                          <span>ใช้ไป {formatBytes(used)} / {formatBytes(d.total_bytes)}</span>
                         </div>
-                        <div className="text-xl font-bold text-white">{formatBytes(d.free_bytes)} Free</div>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500">
-                          <span>Used: {formatBytes(usedBytes)}</span>
-                          <span>Total: {formatBytes(d.total_bytes)}</span>
-                        </div>
-                        <div className="w-full bg-slate-800 rounded-full h-1.5">
-                          <div className="bg-sky-500 h-1.5 rounded-full" style={{ width: `${usedPercent}%` }}></div>
-                        </div>
+                        <ProgressBar value={pct / 100} color={pct > 90 ? "error" : "brand"} />
                       </div>
-                    );
-                  })
-                ) : (
-                  <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/50 backdrop-blur space-y-2">
-                    <div className="flex items-center justify-between text-xs text-slate-400">
-                      <span>Storage</span>
-                      <HardDrive className="w-4 h-4 text-sky-400" />
-                    </div>
-                    <div className="text-xl font-bold text-white">Detecting...</div>
-                  </div>
-                )}
+                    </Card>
+                  );
+                })}
+              </div>
 
-                <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/50 backdrop-blur space-y-2">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>RAM Active Use</span>
-                    <Cpu className="w-4 h-4 text-indigo-400" />
+              {/* Scan Status Summary Card */}
+              {scanResult && (
+                <div className="p-4 rounded-xl border border-sky-900/40 bg-sky-950/20 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-sm text-sky-300">ผลการวิเคราะห์โครงสร้างไฟล์ไดรฟ์ {scanResult.volume_letter}:</h3>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      สำรวจพบทั้งหมด {scanResult.total_files.toLocaleString()} ไฟล์ ใน {scanResult.total_dirs.toLocaleString()} โฟลเดอร์ ({formatBytes(scanResult.total_bytes)})
+                    </p>
                   </div>
-                  <div className="text-xl font-bold text-white">
-                    {memory ? `${formatBytes(memory.used_ram_bytes)} / ${formatBytes(memory.total_ram_bytes)}` : "--"}
-                  </div>
-                  <div className="w-full bg-slate-800 rounded-full h-1.5">
-                    <div
-                      className="bg-indigo-500 h-1.5 rounded-full"
-                      style={{
-                        width: memory ? `${Math.round((memory.used_ram_bytes / memory.total_ram_bytes) * 100)}%` : "0%",
-                      }}
-                    ></div>
-                  </div>
+                  <Button
+                    appearance="outline"
+                    onClick={() => setSelectedTab("explorer")}
+                  >
+                    เปิดตารางแยกตามอายุ/ขนาด
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {selectedTab === "explorer" && (
+            <div className="max-w-5xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-xl font-bold text-white tracking-tight">สำรวจพื้นที่และอายุของไฟล์ในเครื่อง</h1>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    จัดลำดับไฟล์ตามขนาดใหญ่ที่สุด หรือเรียงตามปีที่ไฟล์เข้ามาอยู่ในเครื่องเพื่อให้คุณตัดสินใจเองได้
+                  </p>
                 </div>
 
-                <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/50 backdrop-blur space-y-2">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>Recycle Bin Protection</span>
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  </div>
-                  <div className="text-xl font-bold text-white">Active</div>
-                  <div className="text-xs text-slate-500">Windows Shell Undo Available</div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    size="small"
+                    appearance={explorerSort === "size" ? "primary" : "subtle"}
+                    onClick={() => setExplorerSort("size")}
+                  >
+                    เรียงตามขนาด (ใหญ่ไปเล็ก)
+                  </Button>
+                  <Button
+                    size="small"
+                    appearance={explorerSort === "year" ? "primary" : "subtle"}
+                    onClick={() => setExplorerSort("year")}
+                  >
+                    เรียงตามปี (เก่าที่สุดก่อน)
+                  </Button>
                 </div>
               </div>
 
-              {/* Clean Preview List */}
+              {/* Data Table */}
+              <div className="rounded-xl border border-[#2b2b2b] bg-[#1a1a1a] overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHeaderCell>ชื่อไฟล์ / โฟลเดอร์</TableHeaderCell>
+                      <TableHeaderCell>ขนาด</TableHeaderCell>
+                      <TableHeaderCell>อยู่ในเครื่องมานาน</TableHeaderCell>
+                      <TableHeaderCell>การประเมินความปลอดภัย</TableHeaderCell>
+                      <TableHeaderCell>การจัดการ</TableHeaderCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {fileList
+                      .slice()
+                      .sort((a, b) => {
+                        if (explorerSort === "size") return b.size_bytes - a.size_bytes;
+                        return a.created_year - b.created_year;
+                      })
+                      .map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell>
+                            <TableCellLayout>
+                              <div className="flex flex-col">
+                                <span className="font-medium text-white">{row.name}</span>
+                                <span className="text-neutral-500 text-[11px] truncate max-w-xs">{row.path}</span>
+                              </div>
+                            </TableCellLayout>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono text-xs font-semibold text-sky-400">
+                              {formatBytes(row.size_bytes)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-xs">
+                              <span className="text-neutral-200">{row.age_label}</span>
+                              <span className="text-neutral-500 block text-[10px]">ตั้งแต่ปี {row.created_year}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-0.5">
+                              <Badge
+                                appearance="tint"
+                                color={
+                                  row.label === "Safe"
+                                    ? "success"
+                                    : row.label === "Review"
+                                    ? "warning"
+                                    : "informative"
+                                }
+                              >
+                                {row.label === "Safe" ? "ปลอดภัยที่จะลบ" : row.label === "Review" ? "ควรตรวจสอบก่อน" : "ควรเก็บไว้"}
+                              </Badge>
+                              <span className="text-[10px] text-neutral-400 block max-w-xs truncate">
+                                {row.reason}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="small"
+                              appearance="subtle"
+                              icon={<Delete20Regular />}
+                              onClick={() => handleRecycleFile(row.path)}
+                            >
+                              ย้ายลงถังขยะ
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          {selectedTab === "cleaner" && (
+            <div className="max-w-4xl space-y-6">
+              <div>
+                <h1 className="text-xl font-bold text-white tracking-tight">ทำความสะอาดไฟล์ขยะระบบ</h1>
+                <p className="text-xs text-neutral-400 mt-1">
+                  ล้างไฟล์ Temp แคชไดรเวอร์การ์ดจอ และไฟล์รีพอร์ตที่ไม่จำเป็นอย่างปลอดภัย
+                </p>
+              </div>
+
+              <div className="p-6 rounded-xl border border-[#2b2b2b] bg-[#1a1a1a] flex flex-col items-center justify-center text-center space-y-4">
+                <Flash24Regular className="w-10 h-10 text-amber-400" />
+                <div className="max-w-md">
+                  <h3 className="text-base font-semibold text-white">วิเคราะห์ขยะระบบและ Shader Cache</h3>
+                  <p className="text-xs text-neutral-400 mt-1">
+                    ระบบจะตรวจสอบเฉพาะแคชและไฟล์ชั่วคราวที่มีอายุเกิน 24 ชั่วโมง เพื่อไม่ให้กระทบต่อโปรแกรมที่กำลังทำงาน
+                  </p>
+                </div>
+                <Button
+                  appearance="primary"
+                  size="large"
+                  onClick={async () => {
+                    setStatusText("กำลังตรวจสอบขยะระบบ...");
+                    const plan = await invoke<CleanPlan>("preview_junk_clean");
+                    setCleanPlan(plan);
+                    setStatusText(`พบขยะที่ปลอดภัย ${formatBytes(plan.safe_bytes)}`);
+                  }}
+                >
+                  เริ่มวิเคราะห์ขยะระบบ
+                </Button>
+              </div>
+
               {cleanPlan && (
                 <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-slate-300">Clean Recommendations</h3>
-                  <div className="border border-slate-800 rounded-xl overflow-hidden divide-y divide-slate-800/80 bg-slate-900/40">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-white">รายการที่ตรวจพบ ({formatBytes(cleanPlan.safe_bytes)})</span>
+                    <Button
+                      appearance="primary"
+                      onClick={async () => {
+                        setStatusText("กำลังล้างไฟล์ขยะปลอดภัย...");
+                        await invoke("execute_junk_clean", { onlySafe: true });
+                        setStatusText("ล้างไฟล์ขยะระบบเสร็จสิ้น");
+                        setCleanPlan(null);
+                      }}
+                    >
+                      ยืนยันการล้าง ({formatBytes(cleanPlan.safe_bytes)})
+                    </Button>
+                  </div>
+
+                  <div className="border border-[#2b2b2b] rounded-xl overflow-hidden divide-y divide-[#242424] bg-[#1a1a1a]">
                     {cleanPlan.items.map((item) => (
                       <div key={item.id} className="p-4 flex items-center justify-between">
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-medium text-sm text-slate-200">{item.title}</span>
-                            <span
-                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                item.risk === "Safe"
-                                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                                  : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                              }`}
-                            >
-                              {item.risk}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-400">{item.description}</p>
+                        <div>
+                          <span className="font-semibold text-sm text-neutral-200">{item.title}</span>
+                          <p className="text-xs text-neutral-400 mt-0.5">{item.description}</p>
                         </div>
                         <div className="text-right">
-                          <div className="font-semibold text-sm text-slate-200">{formatBytes(item.matched_bytes)}</div>
-                          <div className="text-xs text-slate-500">{item.matched_files_count} files</div>
+                          <span className="font-mono text-sm text-sky-400 font-bold">{formatBytes(item.matched_bytes)}</span>
+                          <span className="block text-[11px] text-neutral-500">{item.matched_files_count} ไฟล์</span>
                         </div>
                       </div>
                     ))}
@@ -357,94 +567,113 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === "insight" && (
-            <div className="space-y-6 max-w-4xl">
+          {selectedTab === "memory" && (
+            <div className="max-w-4xl space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-white">Memory Insight & Startup Manager</h2>
-                  <p className="text-xs text-slate-400">Inspect real-time memory usage and background startup applications.</p>
+                  <h1 className="text-xl font-bold text-white tracking-tight">การทำงานของหน่วยความจำ (RAM) และ Startup Apps</h1>
+                  <p className="text-xs text-neutral-400 mt-1">
+                    ดูโปรเซสที่ใช้แรมสูงสุด และโปรแกรมที่เปิดอัตโนมัติตอนเปิดเครื่อง
+                  </p>
                 </div>
-                <button
+                <Button
+                  appearance="subtle"
+                  icon={<ArrowClockwise20Regular />}
                   onClick={async () => {
-                    setStatusMessage("Refreshing process memory stats...");
-                    await loadMemory();
-                    setStatusMessage("Memory metrics updated.");
+                    const mem = await invoke<MemoryInsight>("get_system_memory");
+                    setMemory(mem);
+                    setStatusText("อัปเดตสถิติแรมเรียบร้อย");
                   }}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center space-x-2 transition-all"
                 >
-                  <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Refresh Telemetry</span>
+                  รีเฟรชสถิติ
+                </Button>
+              </div>
+
+              {memory && (
+                <Card className="bg-[#1a1a1a] border border-[#2b2b2b] p-4 space-y-2">
+                  <div className="flex justify-between text-xs text-neutral-300">
+                    <span>การใช้งาน RAM จริง</span>
+                    <span>{formatBytes(memory.used_ram_bytes)} / {formatBytes(memory.total_ram_bytes)} ({Math.round((memory.used_ram_bytes / memory.total_ram_bytes) * 100)}%)</span>
+                  </div>
+                  <ProgressBar value={memory.used_ram_bytes / memory.total_ram_bytes} />
+                </Card>
+              )}
+
+              {/* Process List */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-white">โปรเซสที่ใช้หน่วยความจำสูงสุด</h3>
+                <div className="rounded-xl border border-[#2b2b2b] bg-[#1a1a1a] divide-y divide-[#242424] overflow-hidden">
+                  {memory?.top_processes.slice(0, 8).map((p) => (
+                    <div key={p.pid} className="px-4 py-3 flex items-center justify-between text-sm">
+                      <div className="flex items-center space-x-3">
+                        <span className="font-mono text-xs text-neutral-500">#{p.pid}</span>
+                        <span className="font-medium text-white">{p.name}</span>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        <span className="text-xs text-neutral-400 font-mono">{p.cpu_percent.toFixed(1)}% CPU</span>
+                        <span className="text-xs font-mono font-bold text-sky-400">{formatBytes(p.private_working_set_bytes)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* Onboarding Dialog */}
+      <Dialog open={showOnboarding} onOpenChange={(_, data) => setShowOnboarding(data.open)}>
+        <DialogSurface className="bg-[#1c1c1c] text-white border border-[#333] max-w-lg">
+          <DialogBody>
+            <DialogTitle>ยินดีต้อนรับสู่ Lumen</DialogTitle>
+            <DialogContent className="space-y-4 text-xs text-neutral-300 mt-2">
+              <p>เลือกรูปแบบการใช้งานที่เหมาะสมกับคุณที่สุด (คุณสามารถเปลี่ยนได้ตลอดเวลา):</p>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={() => handleSelectMode("simple")}
+                  className={`p-4 rounded-xl border text-left space-y-2 transition-all ${
+                    userMode === "simple"
+                      ? "border-sky-500 bg-sky-950/30"
+                      : "border-[#333] bg-[#222] hover:border-neutral-500"
+                  }`}
+                >
+                  <div className="font-bold text-sm text-white flex items-center space-x-1">
+                    <CheckmarkCircle20Regular className="text-sky-400" />
+                    <span>Simple Mode</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 leading-relaxed">
+                    เหมาะสำหรับผู้ใช้ทั่วไป ซ่อนไฟล์ระบบและไฟล์ซ่อนที่ซับซ้อน ลบเฉพาะสิ่งที่ปลอดภัย พร้อมป้ายกำกับที่เข้าใจง่าย
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => handleSelectMode("advanced")}
+                  className={`p-4 rounded-xl border text-left space-y-2 transition-all ${
+                    userMode === "advanced"
+                      ? "border-indigo-500 bg-indigo-950/30"
+                      : "border-[#333] bg-[#222] hover:border-neutral-500"
+                  }`}
+                >
+                  <div className="font-bold text-sm text-white flex items-center space-x-1">
+                    <CheckmarkCircle20Regular className="text-indigo-400" />
+                    <span>Advanced Mode</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 leading-relaxed">
+                    สำหรับ Power User แสดงข้อมูลเชิงลึก ละเอียดทุก Attribute, เข้าถึงการสแกนลึก MFT, ควบคุม Startup และคัดกรองขั้นสูง
+                  </p>
                 </button>
               </div>
-
-              {/* Top Processes */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-slate-300">Top Memory Consumers</h3>
-                <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40 divide-y divide-slate-800/80">
-                  {memory?.top_processes.map((proc) => (
-                    <div key={proc.pid} className="px-4 py-3 flex items-center justify-between text-sm">
-                      <div className="flex items-center space-x-3">
-                        <span className="font-mono text-xs text-slate-500">#{proc.pid}</span>
-                        <span className="font-medium text-slate-200">{proc.name}</span>
-                      </div>
-                      <div className="flex items-center space-x-6">
-                        <span className="text-xs font-mono text-slate-400">{proc.cpu_percent.toFixed(1)}% CPU</span>
-                        <span className="font-semibold font-mono text-sky-400">{formatBytes(proc.private_working_set_bytes)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Startup Programs */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-slate-300">Windows Startup Apps</h3>
-                <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40 divide-y divide-slate-800/80">
-                  {startupApps.map((app) => (
-                    <div key={app.id} className="p-4 flex items-center justify-between">
-                      <div className="space-y-1 max-w-md">
-                        <div className="font-medium text-sm text-slate-200">{app.name}</div>
-                        <div className="text-xs text-slate-500 font-mono truncate">{app.command}</div>
-                      </div>
-                      <div className="text-xs text-slate-400 font-medium px-2.5 py-1 rounded-md bg-slate-800">
-                        {app.location}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "cleaner" && (
-            <div className="space-y-6 max-w-4xl">
-              <div>
-                <h2 className="text-lg font-bold text-white">Smart Junk Cleaner</h2>
-                <p className="text-xs text-slate-400">Rule-based cleaning with risk levels to protect system stability.</p>
-              </div>
-              <button
-                onClick={runSmartScan}
-                className="px-4 py-2 rounded-xl bg-sky-500 text-slate-950 font-semibold text-xs flex items-center space-x-2"
-              >
-                <Search className="w-3.5 h-3.5" />
-                <span>Analyze System Clean Targets</span>
-              </button>
-            </div>
-          )}
-
-          {activeTab === "explorer" && (
-            <div className="space-y-6 max-w-4xl">
-              <div>
-                <h2 className="text-lg font-bold text-white">Space Explorer</h2>
-                <p className="text-xs text-slate-400">Fast visual disk analysis and age classification.</p>
-              </div>
-              <div className="p-8 border border-dashed border-slate-800 rounded-xl text-center text-slate-500 text-sm">
-                Select a directory or drive above to run deep multi-threaded indexing.
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
-    </div>
+            </DialogContent>
+            <DialogActions className="mt-4">
+              <Button appearance="primary" onClick={() => setShowOnboarding(false)}>
+                เริ่มต้นใช้งาน
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+    </FluentProvider>
   );
 }
