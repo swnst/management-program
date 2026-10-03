@@ -1,10 +1,6 @@
 #[cfg(test)]
 mod tests {
     use scanner::tree::VolumeIndex;
-    use scanner::walk::{scan_volume_fast, ScanOptions};
-    use std::fs::{self, File};
-    use std::io::Write;
-    use std::path::Path;
 
     #[test]
     fn test_volume_index_aggregation() {
@@ -12,11 +8,11 @@ mod tests {
 
         // Add root children
         let dir1 = idx.add_node(0, "Dir1", 0x10, 0, 0, 1000, 1000);
-        let file1 = idx.add_node(dir1, "file1.txt", 0x20, 500, 500, 1000, 1000);
-        let file2 = idx.add_node(dir1, "file2.txt", 0x20, 1500, 1500, 1000, 1000);
+        let _file1 = idx.add_node(dir1, "file1.txt", 0x20, 500, 500, 1000, 1000);
+        let _file2 = idx.add_node(dir1, "file2.txt", 0x20, 1500, 1500, 1000, 1000);
 
         let dir2 = idx.add_node(0, "Dir2", 0x10, 0, 0, 1000, 1000);
-        let file3 = idx.add_node(dir2, "file3.bin", 0x20, 3000, 3000, 1000, 1000);
+        let _file3 = idx.add_node(dir2, "file3.bin", 0x20, 3000, 3000, 1000, 1000);
 
         idx.aggregate_sizes();
 

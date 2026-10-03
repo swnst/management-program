@@ -153,7 +153,6 @@ fn scan_uninstall_key(root: HKEY, subkey: &str, names: &mut HashSet<String>) {
                     let display_val = "DisplayName\0".encode_utf16().collect::<Vec<u16>>();
                     let mut data = [0u8; 512];
                     let mut data_len = data.len() as u32;
-                    let mut val_type = 0u32;
 
                     if RegQueryValueExW(
                         item_key,
